@@ -1,0 +1,104 @@
+<?php
+
+namespace MobileSockets;
+
+use GuzzleHttp\Psr7\Request;
+use Ratchet\ConnectionInterface;
+use Ratchet\MessageComponentInterface;
+
+class Communicator implements MessageComponentInterface
+{
+    protected $clients;
+
+    public function __construct()
+    {
+        $this->clients = new \SplObjectStorage();
+    }
+
+    public function onOpen(ConnectionInterface $conn)
+    {
+        /**
+         * @var Request $request
+         */
+        $request = $conn->httpRequest;
+        parse_str($request->getUri()->getQuery(), $query);
+
+        $conn->name = $query['name'];
+        $conn->order_id = isset($query['order_id']) ? $query['order_id'] : null;
+        $conn->customer_id = isset($query['customer_id']) ? $query['customer_id'] : null;
+        $conn->leading_person_id = isset($query['leading_person_id']) ? $query['leading_person_id'] : null;
+        $conn->type = isset($query['type']) ? $query['type'] : null;
+
+        $this->clients->attach($conn);
+        echo "[ ". date('Y-m-d H:i') . " ] Nowe połączenie! ID {$conn->resourceId}" . PHP_EOL;
+        echo "System {$conn->name}" . PHP_EOL;
+        if(!is_null($conn->order_id)){
+            echo "Zlecenie ID {$conn->order_id}" . PHP_EOL;
+        }
+    }
+
+    public function onClose(ConnectionInterface $conn) {
+
+        $this->clients->detach($conn);
+
+        echo "[ ". date('Y-m-d H:i') . " ] Połączenie {$conn->resourceId} zostało przerwane!\n";
+    }
+
+    public function onError(ConnectionInterface $conn, \Exception $e) {
+        echo "[ ". date('Y-m-d H:i') . " ] An error has occurred: {$e->getMessage()}\n";
+
+        $conn->close();
+    }
+
+    public function onMessage(ConnectionInterface $from, $msg) {
+        $numRecv = count($this->clients) - 1;
+
+        echo PHP_EOL;
+        echo "[ ". date('Y-m-d H:i') . " ] ID Połączenia {$from->resourceId} System {$from->name} ID Zlecenia {$from->order_id} Wiadomość {$msg}" . PHP_EOL;
+
+        foreach ($this->clients as $client) {
+            if ($from !== $client) {
+//                $client->send($msg);
+                if($client->name == $from->name){
+                    if(is_null($from->order_id)) {
+                        if ($from->leading_person_id == $client->leading_person_id) {
+                            $client->send($msg);
+                        } elseif ($from->customer_id == $client->customer_id){
+                            $client->send($msg);
+                        }
+                    } elseif(!is_null($from->order_id) && $from->type == 'communicator'){
+                        if ($from->leading_person_id == $client->leading_person_id) {
+                            $client->send($msg);
+                        } elseif ($from->customer_id == $client->customer_id){
+                            $client->send($msg);
+                        }
+                    }
+                }
+
+            }
+        }
+    }
+}
+
+
+//$client->send($msg);
+//
+//if($from->order_id != null){
+//    if($client->order_id == $from->order_id){
+//        if($client->leading_person_id == $from->leading_person_id){
+//            $client->send($msg);
+//        }
+//        elseif ($client->customer_id == $from->customer_id){
+//            $client->send($msg);
+//        }
+//    }
+//} elseif ($from->customer_id) {
+//
+//} else {
+//    if($client->leading_person_id == $from->leading_person_id){
+//        $client->send($msg);
+//    }
+//    elseif ($client->customer_id == $from->customer_id){
+//        $client->send($msg);
+//    }
+//}
